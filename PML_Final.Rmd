@@ -1,0 +1,121 @@
+---
+title: "PML_Final"
+author: "Bryan Paulsen"
+date: "4/5/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Introduction:
+
+For this project, we are going to take a look at some data from accelerometers used by six individuals during different activities to improve health. We are going to use the training data to classify the manner in which they exercise, which is stored in the "classe" column of the training set.
+
+## Adding Libraries:
+
+There are a few libraries that we are going to use in this project, so let's add them.
+
+```{r libraries}
+library(dplyr)
+library(caret)
+library(ggplot2)
+```
+
+## Loading the data:
+
+Now let's load the training and testing datasets, and take a look at some of the data. There are 160 columns in the dataset, so we are going to limit the amount of columns that will be displayed.
+
+```{r load_data}
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+head(training[, 1:8], 5)
+```
+
+## Cleaning the data:
+
+There are a few things about the data that we will need to clean up before we can start applying machine learning algorithms. We can remove the first column because it just contains a number that was added when loading the CSV file. Also, the last column of the testing set doesn't have the same name as the training set, so we will want to rename it. Another thing that we need to deal with is the missing and NA values in the training and testing datasets. We should remove them all before we build our models. Some of the columns in the testing set are all NA or missing, so let's remove those columns from the testing set and remove all of those same columns from the training data set. There are also some columns that include values related to the date and time, which won't be helpful in the prediction model, so lets remove those columns.
+
+```{r cleaning}
+# Remove the first columns
+training <- training[, -1]
+testing <- testing[, -1]
+
+# Rename the last column of the testing set
+testing <- rename(testing, classe = "problem_id")
+
+# Remove the NA and missing values
+testing <- testing[colSums(!is.na(testing)) > 0]
+training <- select(training, c(names(testing)))
+
+# Remove time related columns
+training <- select(training, -c("raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window"))
+testing <- select(testing, -c("raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window"))
+
+# Partition the data for training and testing.
+trPart <- createDataPartition(training$classe, p = 0.75, list = FALSE)
+trainPart <- training[trPart,]
+testPart <- training[-trPart,]
+
+```
+
+## Building a recursive partition model.
+
+The first model that we will build will be a recursive partition model, and we will use 10-fold cross validation. After building the model, we will check its accuracy with the confusion matrix.
+
+```{r rpart, cache = TRUE}
+# Set the training control for 10-fold cross validation.
+train_control <- trainControl(method = "cv", number = 10)
+
+# Train the model
+modelrpart <- train(classe ~ ., data <- training, method = "rpart", trControl = train_control)
+
+# Check the confusion matrix of the model
+confusionMatrix(testPart$classe, predict(modelrpart, newdata = testPart))
+```
+
+The confusion matrix for this model shows a very poor result. It's about 50% accurate, so this is not a very good model to use for prediction. Let's try some other models.
+
+## Building a linear discriminant analysis model.
+
+The next model that we are going to try is a Linear Discriminant Analysis model. Again, we're going to use 10-fold cross-validation.
+
+```{r lda, cache = TRUE}
+# Set the training control for 10-fold cross validation.
+train_control <- trainControl(method = "cv", number = 10)
+
+# Train the model
+modelrpart <- train(classe ~ ., data <- training, method = "lda", trControl = train_control)
+
+# Check the confusion matrix of the model
+confusionMatrix(testPart$classe, predict(modelrpart, newdata = testPart))
+```
+
+The accuracy of this model is about 73%. Better than the rpart model, but still not great. We may be able to do better than that. Let's try another model.
+
+## Building a random forest model.
+
+The third model that we will build is a random forest model. We're also using 4-fold cross validation. 
+
+```{r rfmodel, cache = TRUE}
+# Set the training control for 4-fold cross validation.
+train_control <- trainControl(method = "cv", number = 4)
+
+# Train the model
+modelrf <- train(classe ~ ., data <- training, method = "rf", trControl = train_control)
+
+# Check the confusion matrix of the model
+confusionMatrix(testPart$classe, predict(modelrf, newdata = testPart))
+
+```
+
+The results of this model are excellent. There is a 100% accuracy rate on predicting the class. This is the model that we will use to predict on the testing dataset. We expect that it will have a 100% out-of-sample accuracy.
+
+## Predict on the testing set.
+
+Now we're going to predict the classe in the testing set and add it to the dataset.
+
+```{r prediction}
+testing$classe <- predict(modelrf, newdata = testing)
+select(testing, c(user_name, classe))
+```
